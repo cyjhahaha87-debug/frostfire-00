@@ -1,6 +1,7 @@
 {
-  "name": "mmo-test",
-  "version": "1.0.0",
+  "name": "frostfire-00",
+  "version": "0.1.0",
+  "description": "expedition 형식 MMO 실험 — 타일맵 위에 다수 접속자가 공존",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,6 +11,6 @@
     "socket.io": "^4.7.2"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=18.0.0"
   }
 }

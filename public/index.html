@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>MMO Test</title>
+<style>
+  body { margin: 0; background: #1a1a1a; color: white; font-family: monospace; overflow: hidden; }
+  canvas { display: block; background: #2a2a2a; }
+  #info { position: fixed; top: 10px; left: 10px; }
+</style>
+</head>
+<body>
+<div id="info">방향키로 이동 · 접속자: <span id="count">0</span></div>
+<canvas id="c" width="800" height="600"></canvas>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const countEl = document.getElementById('count');
+  let myId = null;
+  let players = {};
+
+  socket.on('init', (data) => {
+    myId = data.id;
+    players = data.players;
+    updateCount();
+  });
+
+  socket.on('playerJoined', (data) => {
+    players[data.id] = data.data;
+    updateCount();
+  });
+
+  socket.on('playerMoved', (data) => {
+    if (players[data.id]) {
+      players[data.id].x = data.x;
+      players[data.id].y = data.y;
+    }
+  });
+
+  socket.on('playerLeft', (id) => {
+    delete players[id];
+    updateCount();
+  });
+
+  function updateCount() {
+    countEl.textContent = Object.keys(players).length;
+  }
+
+  const keys = {};
+  window.addEventListener('keydown', (e) => keys[e.key] = true);
+  window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+  function gameLoop() {
+    if (myId && players[myId]) {
+      const me = players[myId];
+      let moved = false;
+      if (keys['ArrowUp'])    { me.y -= 3; moved = true; }
+      if (keys['ArrowDown'])  { me.y += 3; moved = true; }
+      if (keys['ArrowLeft'])  { me.x -= 3; moved = true; }
+      if (keys['ArrowRight']) { me.x += 3; moved = true; }
+      if (moved) socket.emit('move', { x: me.x, y: me.y });
+    }
+
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    for (const id in players) {
+      const p = players[id];
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - 15, p.y - 15, 30, 30);
+      if (id === myId) {
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(p.x - 15, p.y - 15, 30, 30);
+      }
+    }
+
+    requestAnimationFrame(gameLoop);
+  }
+  gameLoop();
+</script>
+</body>
+</html>

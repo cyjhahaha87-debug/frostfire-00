@@ -105,4 +105,186 @@
 
 <div id="layout">
   <div id="game-area">
-    <div id="info">방향키로 이동 · 접속자: <span id="
+    <div id="info">방향키로 이동 · 접속자: <span id="count">0</span></div>
+    <canvas id="c" width="800" height="600"></canvas>
+  </div>
+  
+  <div id="chat-panel">
+    <div id="chat-header">◆ 채 팅 ◆</div>
+    <div id="chat-log"></div>
+    <div id="chat-input-area">
+      <input id="chat-input" type="text" placeholder="메시지 입력 (Enter)" maxlength="200" autocomplete="off">
+      <button id="chat-send">전송</button>
+    </div>
+    <div id="nick-area">
+      <input id="nick-input" type="text" placeholder="닉네임 변경" maxlength="20" autocomplete="off">
+      <button id="nick-btn">변경</button>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const countEl = document.getElementById('count');
+  const chatLog = document.getElementById('chat-log');
+  const chatInput = document.getElementById('chat-input');
+  const chatSend = document.getElementById('chat-send');
+  const nickInput = document.getElementById('nick-input');
+  const nickBtn = document.getElementById('nick-btn');
+  
+  let myId = null;
+  let players = {};
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function addChatMessage(msg) {
+    const div = document.createElement('div');
+    div.className = 'msg';
+    if (msg.type === 'system') {
+      div.classList.add('msg-system');
+      div.textContent = msg.text;
+    } else {
+      const nick = document.createElement('span');
+      nick.className = 'msg-nick';
+      nick.style.color = msg.color;
+      nick.textContent = msg.nickname + ':';
+      const text = document.createElement('span');
+      text.className = 'msg-text';
+      text.textContent = ' ' + msg.text;
+      div.appendChild(nick);
+      div.appendChild(text);
+    }
+    chatLog.appendChild(div);
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  socket.on('init', (data) => {
+    myId = data.id;
+    players = data.players;
+    updateCount();
+    // 기존 채팅 히스토리 표시
+    if (data.chatHistory) {
+      data.chatHistory.forEach(addChatMessage);
+    }
+  });
+
+  socket.on('playerJoined', (data) => {
+    players[data.id] = data.data;
+    updateCount();
+  });
+
+  socket.on('playerMoved', (data) => {
+    if (players[data.id]) {
+      players[data.id].x = data.x;
+      players[data.id].y = data.y;
+    }
+  });
+
+  socket.on('playerRenamed', (data) => {
+    if (players[data.id]) {
+      players[data.id].nickname = data.nickname;
+    }
+  });
+
+  socket.on('playerLeft', (id) => {
+    delete players[id];
+    updateCount();
+  });
+
+  socket.on('chat', (msg) => {
+    addChatMessage(msg);
+  });
+
+  function updateCount() {
+    countEl.textContent = Object.keys(players).length;
+  }
+
+  function sendChat() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+    socket.emit('chat', text);
+    chatInput.value = '';
+  }
+
+  chatSend.addEventListener('click', sendChat);
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      sendChat();
+    }
+  });
+
+  nickBtn.addEventListener('click', () => {
+    const name = nickInput.value.trim();
+    if (!name) return;
+    socket.emit('nickname', name);
+    nickInput.value = '';
+  });
+  nickInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      nickBtn.click();
+    }
+  });
+
+  // 이동 처리 — 채팅 입력창에 포커스 있으면 이동 안 함
+  const keys = {};
+  window.addEventListener('keydown', (e) => {
+    if (document.activeElement === chatInput || document.activeElement === nickInput) return;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+      e.preventDefault();
+      keys[e.key] = true;
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    keys[e.key] = false;
+  });
+
+  function gameLoop() {
+    if (myId && players[myId]) {
+      const me = players[myId];
+      let moved = false;
+      if (keys['ArrowUp'])    { me.y -= 3; moved = true; }
+      if (keys['ArrowDown'])  { me.y += 3; moved = true; }
+      if (keys['ArrowLeft'])  { me.x -= 3; moved = true; }
+      if (keys['ArrowRight']) { me.x += 3; moved = true; }
+      // 화면 경계
+      me.x = Math.max(15, Math.min(canvas.width - 15, me.x));
+      me.y = Math.max(15, Math.min(canvas.height - 15, me.y));
+      if (moved) socket.emit('move', { x: me.x, y: me.y });
+    }
+
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    for (const id in players) {
+      const p = players[id];
+      // 네모
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - 15, p.y - 15, 30, 30);
+      if (id === myId) {
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(p.x - 15, p.y - 15, 30, 30);
+      }
+      // 닉네임
+      if (p.nickname) {
+        ctx.fillStyle = 'white';
+        ctx.font = '12px Malgun Gothic, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.nickname, p.x, p.y - 22);
+      }
+    }
+
+    requestAnimationFrame(gameLoop);
+  }
+  gameLoop();
+</script>
+</body>
+</html>
